@@ -2597,27 +2597,26 @@
 
       // ==================== 安卓后台播放与媒体中心补丁 ====================
       const EnhancedMediaSession = {
-        _notification: null,
-
         init(player, store, ui) {
-          if (!('mediaSession' in navigator)) {
-            console.log('当前浏览器不支持MediaSession，使用 fallback 通知策略');
-            this.fallbackNotification(player, store);
-            return;
-          }
+          if (!('mediaSession' in navigator)) return;
 
           player.on('play', () => {
             const track = store.state.currentTrack;
             if (track) {
               this.updateMetadata(track);
               navigator.mediaSession.playbackState = "playing";
-              this.showCustomNotification(track, true);
+              if (window.showNowPlayingNotification) {
+                window.showNowPlayingNotification(track.name, `正在播放: ${track.singer || '未知歌手'}`);
+              }
             }
           });
 
           player.on('pause', () => {
             navigator.mediaSession.playbackState = "paused";
-            this.showCustomNotification(store.state.currentTrack, false);
+            if (window.showNowPlayingNotification) {
+              const track = store.state.currentTrack;
+              window.showNowPlayingNotification(track?.name || '已暂停', '已暂停');
+            }
           });
 
           player.on('stop', () => {
@@ -3088,48 +3087,87 @@
     })();
 
   (function () {
-    if (!('serviceWorker' in navigator)) return;
+  if (!('serviceWorker' in navigator)) return;
 
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      console.log('ServiceWorker 注册成功：', reg);
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    console.log('ServiceWorker 注册成功：', reg);
 
-      // 如果通知权限未定，主动请求（不打断用户）
-      if (window.Notification && Notification.permission === 'default') {
-        Notification.requestPermission().then(p => console.log('Notification.permission ->', p));
+    // 在页面状态栏显示成功信息
+    const statusEl = document.getElementById('statusMessage');
+    if (statusEl) {
+      statusEl.textContent = 'ServiceWorker 注册成功';
+      statusEl.className = 'status-message status-success';
+      statusEl.style.display = 'block';
+      setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+    }
+
+    // 原有的权限请求和通知函数...
+    if (window.Notification && Notification.permission === 'default') {
+      Notification.requestPermission().then(p => console.log('Notification.permission ->', p));
+    }
+
+    window.showNowPlayingNotification = function (title, body) {
+      if (reg && reg.showNotification && Notification.permission === 'granted') {
+        reg.showNotification(title || '正在播放', {
+          body: body || '',
+          tag: 'now-playing',
+          renotify: true,
+          actions: [
+            { action: 'prev', title: '上一曲' },
+            { action: 'pause', title: '暂停' },
+            { action: 'next', title: '下一曲' }
+          ]
+        }).catch(e => console.warn('showNotification 失败', e));
+      } else if (Notification && Notification.permission === 'granted') {
+        // 备用：页面级通知（某些浏览器可能仍然失败）
+        try { new Notification(title || '正在播放', { body: body || '', tag: 'now-playing' }); } catch (e) {}
       }
+    };
+  }).catch(err => {
+    console.warn('ServiceWorker 注册失败：', err);
 
-      // 暴露一个简单的辅助函数，页面中播放时可调用以显示“正在播放”通知
-      window.showNowPlayingNotification = function (title, body) {
-        if (reg && reg.showNotification && Notification.permission === 'granted') {
-          reg.showNotification(title || '正在播放', {
-            body: body || '',
-            tag: 'now-playing',
-            renotify: true,
-            // requireInteraction 许多厂商会忽略，这里不强制
-            actions: [
-              { action: 'prev', title: '上一曲' },
-              { action: 'pause', title: '暂停' },
-              { action: 'next', title: '下一曲' }
-            ]
-          }).catch(e => console.warn('showNotification 失败', e));
-        } else if (Notification && Notification.permission === 'granted') {
-          // 回退到页面级 Notification
-          try { new Notification(title || '正在播放', { body: body || '', tag: 'now-playing' }); } catch (e) {}
-        }
-      };
-    }).catch(err => console.warn('ServiceWorker 注册失败：', err));
+    // 在页面状态栏显示失败信息
+    const statusEl = document.getElementById('statusMessage');
+    if (statusEl) {
+      statusEl.textContent = 'ServiceWorker 注册失败: ' + err.message;
+      statusEl.className = 'status-message status-error';
+      statusEl.style.display = 'block';
+      // 失败信息停留更长时间
+      setTimeout(() => { statusEl.style.display = 'none'; }, 8000);
+    }
+  });
 
-    // 接收来自 Service Worker 的消息（notification action）
+    // 监听 Service Worker 发来的消息
     navigator.serviceWorker.addEventListener('message', (e) => {
       const msg = e.data || {};
-      if (msg.type === 'notification-action') {
+
+      if (msg.type === 'sw-log') {
+        // 显示 Service Worker 内部日志（安装、激活等）
+        const statusEl = document.getElementById('statusMessage');
+        if (statusEl) {
+          statusEl.textContent = 'SW 日志: ' + msg.message;
+          statusEl.className = 'status-message status-info';
+          statusEl.style.display = 'block';
+          setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+        }
+      }
+      else if (msg.type === 'notification-action') {
+        // 处理通知按钮点击事件
         const action = msg.action;
         console.log('收到 SW 消息：', action);
-        // 简单桥接到现有播放器 / UI（如果存在）
-        if (action === 'pause' && window.musicPlayer) { window.musicPlayer.pause && window.musicPlayer.pause(); }
-        if (action === 'play' && window.musicPlayer) { window.musicPlayer.play && window.musicPlayer.play(); }
-        if (action === 'next' && window.uiManager) { window.uiManager.emit && window.uiManager.emit('player:next'); }
-        if (action === 'prev' && window.uiManager) { window.uiManager.emit && window.uiManager.emit('player:prev'); }
+
+        if (action === 'pause' && window.musicPlayer) {
+          window.musicPlayer.pause && window.musicPlayer.pause();
+        }
+        if (action === 'play' && window.musicPlayer) {
+          window.musicPlayer.play && window.musicPlayer.play();
+        }
+        if (action === 'next' && window.uiManager) {
+          window.uiManager.emit && window.uiManager.emit('player:next');
+        }
+        if (action === 'prev' && window.uiManager) {
+          window.uiManager.emit && window.uiManager.emit('player:prev');
+        }
       }
     });
   })();
