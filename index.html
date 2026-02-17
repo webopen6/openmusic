@@ -3,13 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🎵 FLAC无损 · 精简控制</title>
+  <title>🎵 FLAC无损</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FLAC播放器">
   <link rel="apple-touch-icon" href="https://img.icons8.com/color/192/music-record.png">
-
-  <!-- 预加载优化 -->
   <link rel="preload" href="./music.json" as="fetch" crossorigin="anonymous">
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="preconnect" href="https://img.icons8.com">
@@ -260,9 +258,9 @@
       border-bottom: 1px solid #f0f0f0;
       cursor: pointer;
       transition: var(--transition);
-      position: absolute;
-      left: 0;
-      right: 0;
+      position: relative;
+      left: auto;
+      right: auto;
       height: 68px;
       box-sizing: border-box;
       background: var(--white);
@@ -424,7 +422,6 @@
       margin: 10px 0;
     }
 
-    /* 原有的mode-group隐藏——不再显示四个小按钮 */
     .mode-group {
       display: none !important;
     }
@@ -1055,7 +1052,6 @@
       color: var(--text-secondary);
     }
 
-    /* 主题切换按钮现在直接放在控制栏中，不需要右下角悬浮了，但保留样式备用 */
     .theme-btn.inline {
       width: 40px;
       height: 40px;
@@ -1208,7 +1204,6 @@
         </div>
       </div>
 
-      <!-- 正确的按钮排列：模式切换、上一曲、播放、下一曲、主题切换 (内嵌) -->
       <div class="control-group" style="gap: 12px;">
         <button class="btn btn-icon" id="modeBtn" title="播放模式">
           <i class="fas fa-list" id="modeIcon"></i>
@@ -1222,7 +1217,6 @@
         <button class="btn btn-icon btn-icon-large" id="nextBtn" title="下一首">
           <i class="fas fa-step-forward"></i>
         </button>
-        <!-- 内嵌主题切换按钮，取代原有的四个小模式按钮 -->
         <button class="btn btn-icon theme-btn inline" id="themeToggleInline" title="深色/浅色">
           <i class="fas fa-moon" id="themeIconInline"></i>
         </button>
@@ -1236,7 +1230,6 @@
     </div>
   </div>
 
-  <!-- 隐藏悬浮的主题切换按钮（原 #inlineThemeToggle 改为内嵌使用，此处保留但隐藏） -->
   <button class="theme-btn float" id="inlineThemeToggle" style="display: none;">🌙</button>
 
   <template id="categoryItemTemplate">
@@ -1437,7 +1430,7 @@
 
         async loadMusicData() {
           try {
-            const response = await fetch('./music.json?' + Date.now()); // 添加时间戳避免缓存
+            const response = await fetch('./music.json?' + Date.now());
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
@@ -1491,14 +1484,16 @@
         }
 
         setState(updater) {
-          const newState = typeof updater === 'function' ? updater(this.state) : { ...this.state, ...updater };
+          const prevState = { ...this.state };
+          const partial = typeof updater === 'function' ? updater(this.state) : updater;
+          const newState = { ...this.state, ...partial };
           Object.assign(this.state, newState);
-          this.notify();
+          this.notify(prevState);
         }
 
         notify() {
           this.listeners.forEach(listener => {
-            try { listener(this.state); } catch (e) { console.error('Listener error:', e); }
+            try { listener(this.state, prevState); } catch (e) { console.error('Listener error:', e); }
           });
         }
 
@@ -1583,11 +1578,13 @@
           const { filtered, currentIndex, playMode } = this.state;
           if (filtered.length === 0) return 0;
           switch (playMode) {
-            case 'single': case 'loop': return currentIndex;
-            case 'random':
+            case 'single': return currentIndex;
+            case 'loop': return (currentIndex + 1) % filtered.length;
+            case 'random': {
               let nextIndex;
               do { nextIndex = Math.floor(Math.random() * filtered.length); } while (filtered.length > 1 && nextIndex === currentIndex);
               return nextIndex;
+            }
             default: return (currentIndex + 1) % filtered.length;
           }
         }
@@ -1596,11 +1593,13 @@
           const { filtered, currentIndex, playMode } = this.state;
           if (filtered.length === 0) return 0;
           switch (playMode) {
-            case 'single': case 'loop': return currentIndex;
-            case 'random':
+            case 'single': return currentIndex;
+            case 'loop': return (currentIndex - 1 + filtered.length) % filtered.length;
+            case 'random': {
               let prevIndex;
               do { prevIndex = Math.floor(Math.random() * filtered.length); } while (filtered.length > 1 && prevIndex === currentIndex);
               return prevIndex;
+            }
             default: return (currentIndex - 1 + filtered.length) % filtered.length;
           }
         }
@@ -1836,7 +1835,7 @@
               try {
                 const decoder = new TextDecoder(enc, { fatal: false });
                 text = decoder.decode(buffer);
-                const replacementCount = (text.match(/ /g) || []).length;
+                const replacementCount = (text.match(/�/g) || []).length;
                 if (replacementCount < text.length * 0.1) {
                   break;
                 }
@@ -2036,8 +2035,20 @@
           this.visibleCount = 0;
           this.startIndex = 0;
           this.endIndex = 0;
-          this.renderedItems = new Set();
           this._savedScrollTop = 0;
+
+          this.content = document.createElement('div');
+          this.content.className = 'virtual-content';
+          this.content.style.position = 'relative';
+          this.content.style.width = '100%';
+          this.contentInner = document.createElement('div');
+          this.contentInner.className = 'virtual-content-inner';
+          this.contentInner.style.position = 'absolute';
+          this.contentInner.style.left = '0';
+          this.contentInner.style.top = '0';
+          this.content.appendChild(this.contentInner);
+          this.container.innerHTML = '';
+          this.container.appendChild(this.content);
 
           this.onScroll = this.onScroll.bind(this);
           this.onResize = Utils.throttle(this.onScroll.bind(this), 100);
@@ -2046,103 +2057,57 @@
         }
 
         init() {
-          this.container.style.position = 'relative';
           this.container.style.overflowY = 'auto';
+          if (!this.container.clientHeight) this.container.style.height = '400px';
           this.updateVisibleCount();
           this.container.addEventListener('scroll', this.onScroll);
           window.addEventListener('resize', this.onResize);
+          this.updateContentHeight();
           this.render();
         }
 
+        updateContentHeight() {
+          this.content.style.height = `${this.items.length * this.itemHeight}px`;
+        }
+
         updateVisibleCount() {
-          if (window.innerWidth <= 1024) {
-            this.visibleCount = 6;
-          } else {
-            this.visibleCount = Math.ceil(this.container.clientHeight / this.itemHeight);
-          }
+          this.visibleCount = Math.ceil(this.container.clientHeight / this.itemHeight);
         }
 
         onScroll() {
           const scrollTop = this.container.scrollTop;
           this.startIndex = Math.max(0, Math.floor(scrollTop / this.itemHeight) - this.buffer);
-          this.endIndex = Math.min(
-            this.items.length,
-            Math.ceil((scrollTop + this.container.clientHeight) / this.itemHeight) + this.buffer
-          );
+          this.endIndex = Math.min(this.items.length, this.startIndex + this.visibleCount + this.buffer * 2);
           this.render();
         }
 
         updateItems(items) {
-          const currentScrollTop = this.container.scrollTop;
+          const prevScrollTop = this.container.scrollTop;
           this.items = items;
-          this.container.style.height = `${items.length * this.itemHeight}px`;
-
-          this.startIndex = Math.max(0, Math.floor(currentScrollTop / this.itemHeight) - this.buffer);
-          this.endIndex = Math.min(
-            items.length,
-            Math.ceil((currentScrollTop + this.container.clientHeight) / this.itemHeight) + this.buffer
-          );
-
-          this.render();
-        }
-
-        setScrollPosition(scrollTop) {
-          if (this.container && !isNaN(scrollTop)) {
-            requestAnimationFrame(() => {
-              this.container.scrollTop = scrollTop;
-              this.onScroll();
-            });
-          }
-        }
-
-        saveScrollPosition() {
-          if (this.container) {
-            this._savedScrollTop = this.container.scrollTop;
-          }
-        }
-
-        restoreScrollPosition() {
-          if (this.container && this._savedScrollTop !== undefined) {
-            this.setScrollPosition(this._savedScrollTop);
-          }
+          this.updateContentHeight();
+          this.updateVisibleCount();
+          this.container.scrollTop = Math.min(prevScrollTop, this.items.length * this.itemHeight);
+          this.onScroll();
         }
 
         render() {
-          const fragment = document.createDocumentFragment();
-
-          if (this.startIndex > 0) {
-            const topPlaceholder = document.createElement('div');
-            topPlaceholder.style.height = `${this.startIndex * this.itemHeight}px`;
-            fragment.appendChild(topPlaceholder);
-          }
-
+          const translateY = this.startIndex * this.itemHeight;
+          this.contentInner.style.transform = `translateY(${translateY}px)`;
+          this.contentInner.innerHTML = '';
           for (let i = this.startIndex; i < this.endIndex && i < this.items.length; i++) {
-            const item = this.renderItem(this.items[i], i);
-            item.style.position = 'relative';
-            item.style.height = `${this.itemHeight}px`;
-            item.dataset.index = i;
-            fragment.appendChild(item);
+            const el = this.renderItem(this.items[i], i);
+            el.style.height = `${this.itemHeight}px`;
+            el.dataset.index = i;
+            this.contentInner.appendChild(el);
           }
-
-          if (this.endIndex < this.items.length) {
-            const bottomPlaceholder = document.createElement('div');
-            bottomPlaceholder.style.height = `${(this.items.length - this.endIndex) * this.itemHeight}px`;
-            fragment.appendChild(bottomPlaceholder);
-          }
-
-          this.container.innerHTML = '';
-          this.container.appendChild(fragment);
         }
 
         destroy() {
-          if (this.container) {
-            this.container.removeEventListener('scroll', this.onScroll);
-            while (this.container.firstChild) {
-              this.container.removeChild(this.container.firstChild);
-            }
-          }
+          this.container.removeEventListener('scroll', this.onScroll);
           window.removeEventListener('resize', this.onResize);
-          this.renderedItems.clear();
+          this.content = null;
+          this.contentInner = null;
+          this.container.innerHTML = '';
         }
       }
 
@@ -2258,7 +2223,6 @@
           const refreshBtn = this.elements.get('#refreshBtn');
           if (refreshBtn) refreshBtn.addEventListener('click', () => this.emit('refresh'));
 
-          // 隐藏的mode-group不再监听，因为已经隐藏。但是模式切换通过#modeBtn处理。
           this.modeBtns.forEach(btn => {
             btn.addEventListener('click', () => {
               const mode = btn.dataset.mode;
@@ -2289,7 +2253,6 @@
             });
           }
 
-          // 内嵌主题切换按钮
           const inlineTheme = this.elements.get('#themeToggleInline');
           if (inlineTheme) {
             inlineTheme.addEventListener('click', () => {
@@ -2686,16 +2649,15 @@
           let refreshInterval;
 
           player.on('play', () => {
+            if (refreshInterval) clearInterval(refreshInterval);
             refreshInterval = setInterval(() => {
               if (player.state.isPlaying && store.state.currentTrack) {
                 this.updateMetadata(store.state.currentTrack);
               }
             }, 30000);
           });
-
-          player.on('pause', () => clearInterval(refreshInterval));
-          player.on('ended', () => clearInterval(refreshInterval));
-        },
+          player.on('pause', () => { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }});
+          player.on('ended', () => { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }});
 
         requestNotificationPermission() {
           if ('Notification' in window && Notification.permission === 'default') {
@@ -2845,14 +2807,46 @@
             this.ui.showStatus('播放失败，请检查音频文件', 'error');
           });
 
-          this.store.subscribe((state) => {
-            this.ui.updateMusicList();
-            if (!state.rankCache) this.ui.renderRankList();
-            if (this.ui.virtualList) {
-              this.ui.virtualList.render();
+          this.store.subscribe((state, prevState) => {
+            if (!prevState) {
+              this.ui.updateMusicList();
+              this.ui.renderRankList();
+              if (this.ui.virtualList && typeof this.ui.virtualList.render === 'function') {
+                this.ui.virtualList.render();
+              }
+              return;
+            }
+
+            const changed = (key) => {
+              const a = prevState[key];
+              const b = state[key];
+              if (a === b) return false;
+              if (Array.isArray(a) && Array.isArray(b)) {
+                if (a.length !== b.length) return true;
+                for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+                return false;
+              }
+              if (typeof a === 'object' && typeof b === 'object') {
+                try { return JSON.stringify(a) !== JSON.stringify(b); } catch (e) { return a !== b; }
+              }
+              return a !== b;
+            };
+
+            const listKeys = ['library', 'filtered', 'currentIndex', 'favorites', 'searchKeyword', 'currentCategory'];
+            if (listKeys.some(k => changed(k))) {
+              this.ui.updateMusicList();
+            }
+
+            if (changed('rankCache') || changed('playCounts')) {
+              this.ui.renderRankList();
+            }
+
+            if (changed('filtered') || changed('currentIndex')) {
+              if (this.ui.virtualList && typeof this.ui.virtualList.render === 'function') {
+                this.ui.virtualList.render();
+              }
             }
           });
-        }
 
         initialRender() {
           this.ui.renderCategories();
@@ -2999,8 +2993,8 @@
       }
 
       // ==================== 启动应用（只初始化一次） ====================
-      if (!window.__app_initialized) {
-        document.addEventListener('DOMContentLoaded', () => {
+      if (window.__app_initialized) return;
+        function doInit() {
           try {
             const app = new App();
             window.app = app;
@@ -3018,8 +3012,14 @@
               statusEl.style.display = 'block';
             }
           }
-        });
-      }
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', doInit);
+        } else {
+          doInit();
+        }
+      })();
 
       // ==================== 页面卸载时清理资源 ====================
       window.addEventListener('beforeunload', () => {
