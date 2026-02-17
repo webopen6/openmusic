@@ -311,13 +311,14 @@
     .music-item {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      flex-wrap: nowrap !important;
       padding: 12px 16px;
+      height: 68px;
+      box-sizing: border-box;
       border-bottom: 1px solid #f0f0f0;
       cursor: pointer;
       transition: var(--transition);
-      position: relative;
-      height: 68px;
-      box-sizing: border-box;
       background: var(--white);
     }
 
@@ -335,8 +336,17 @@
     }
 
     .music-info {
-      flex: 1;
+      flex: 1 1 auto;
       min-width: 0;
+    }
+
+    .music-item > div:last-child {
+      flex: 0 0 auto;
+      margin-left: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
     }
 
     .music-name {
@@ -1438,7 +1448,7 @@
           this.notify(prevState);
         }
 
-        notify() {
+        notify(prevState) {
           this.listeners.forEach(listener => {
             try { listener(this.state, prevState); } catch (e) { console.error('Listener error:', e); }
           });
@@ -2055,6 +2065,15 @@
           this.content = null;
           this.contentInner = null;
           this.container.innerHTML = '';
+        }
+        saveScrollPosition() {
+          this._savedScrollTop = this.container.scrollTop;
+        }
+
+        restoreScrollPosition() {
+          if (this._savedScrollTop !== undefined) {
+            this.container.scrollTop = this._savedScrollTop;
+          }
         }
       }
 
@@ -2968,7 +2987,7 @@
           window.uiManager.virtualList.destroy();
         }
       });
-      
+
   </script>
 </body>
 </html>
