@@ -2015,8 +2015,8 @@
       // ==================== 虚拟列表 ====================
       class VirtualList {
         constructor(container, items, renderItem) {
-          this.container = container;
-          this.items = items;
+          this.container = container; // 外层滚动容器
+          this.items = items || [];
           this.renderItem = renderItem;
           this.itemHeight = CONFIG.VIRTUAL_LIST_ITEM_HEIGHT;
           this.buffer = CONFIG.VIRTUAL_LIST_BUFFER;
@@ -2028,16 +2028,23 @@
           this.onScroll = this.onScroll.bind(this);
           this.onResize = Utils.throttle(this.onScroll.bind(this), 100);
 
+          // 创建内部 content wrapper（用于设置总高度并放置元素）
+          this.content = document.createElement('div');
+          this.content.style.position = 'relative';
+          this.content.style.width = '100%';
+          this.container.style.overflowY = 'auto';
+          this.container.style.position = this.container.style.position || 'relative';
+          this.container.innerHTML = '';
+          this.container.appendChild(this.content);
+
           this.init();
         }
 
         init() {
-          this.container.style.position = 'relative';
-          this.container.style.overflowY = 'auto';
-
           this.updateVisibleCount();
           this.container.addEventListener('scroll', this.onScroll);
           window.addEventListener('resize', this.onResize);
+          this.content.style.height = `${this.items.length * this.itemHeight}px`;
           this.render();
         }
 
@@ -2045,7 +2052,8 @@
           if (window.innerWidth <= 1024) {
             this.visibleCount = 6;
           } else {
-            this.visibleCount = Math.ceil(this.container.clientHeight / this.itemHeight);
+            const h = this.container.clientHeight || window.innerHeight;
+            this.visibleCount = Math.ceil(h / this.itemHeight);
           }
         }
 
@@ -2061,8 +2069,8 @@
 
         updateItems(items) {
           const currentScrollTop = this.container.scrollTop;
-          this.items = items;
-          this.container.style.height = `${items.length * this.itemHeight}px`;
+          this.items = items || [];
+          this.content.style.height = `${this.items.length * this.itemHeight}px`;
 
           this.startIndex = Math.max(0, Math.floor(currentScrollTop / this.itemHeight) - this.buffer);
           this.endIndex = Math.min(
@@ -2080,49 +2088,57 @@
           }
         }
 
-        render() {
-          while (this.container.firstChild) {
-            const child = this.container.firstChild;
-            if (child.removeEventListener) {
-              child.removeEventListener('click', child._clickHandler);
-            }
-            this.container.removeChild(child);
+        clearContentChildren() {
+          while (this.content.firstChild) {
+            const child = this.content.firstChild;
+            try {
+              const fav = child.querySelector && child.querySelector('.favorite-icon');
+              if (fav && fav._clickHandler) {
+                fav.removeEventListener('click', fav._clickHandler);
+                delete fav._clickHandler;
+              }
+            } catch (e) {}
+            this.content.removeChild(child);
           }
           this.renderedItems.clear();
+        }
 
-          if (this.startIndex > 0) {
-            const topPlaceholder = document.createElement('div');
-            topPlaceholder.style.height = `${this.startIndex * this.itemHeight}px`;
-            this.container.appendChild(topPlaceholder);
-          }
+        render() {
+          // 清空之前渲染的内容
+          this.clearContentChildren();
+
+          // top placeholder not needed because we set absolute top per item,
+          // but we'll keep content height as total height
 
           for (let i = this.startIndex; i < this.endIndex; i++) {
             if (i >= this.items.length) break;
             const item = this.renderItem(this.items[i], i);
-            item.style.position = 'relative';
+            item.style.position = 'absolute';
+            item.style.left = '0';
+            item.style.right = '0';
             item.style.height = `${this.itemHeight}px`;
+            item.style.top = `${i * this.itemHeight}px`;
             item.dataset.index = i;
-            this.container.appendChild(item);
+            this.content.appendChild(item);
             this.renderedItems.add(item);
-          }
-
-          if (this.endIndex < this.items.length) {
-            const bottomPlaceholder = document.createElement('div');
-            bottomPlaceholder.style.height = `${(this.items.length - this.endIndex) * this.itemHeight}px`;
-            this.container.appendChild(bottomPlaceholder);
           }
         }
 
         destroy() {
           if (this.container) {
             this.container.removeEventListener('scroll', this.onScroll);
-            while (this.container.firstChild) {
-              const child = this.container.firstChild;
-              if (child.removeEventListener) {
-                child.removeEventListener('click', child._clickHandler);
-              }
-              this.container.removeChild(child);
+            while (this.content.firstChild) {
+              const child = this.content.firstChild;
+              try {
+                const fav = child.querySelector && child.querySelector('.favorite-icon');
+                if (fav && fav._clickHandler) {
+                  fav.removeEventListener('click', fav._clickHandler);
+                  delete fav._clickHandler;
+                }
+              } catch (e) {}
+              this.content.removeChild(child);
             }
+            if (this.content.parentNode === this.container) this.container.removeChild(this.content);
           }
           window.removeEventListener('resize', this.onResize);
           this.renderedItems.clear();
@@ -2554,9 +2570,11 @@
 
       // ==================== 安卓后台播放与媒体中心补丁 ====================
       const EnhancedMediaSession = {
+        _notification: null,
+
         init(player, store, ui) {
           if (!('mediaSession' in navigator)) {
-            console.log('当前浏览器不支持MediaSession');
+            console.log('当前浏览器不支持MediaSession，使用 fallback 通知策略');
             this.fallbackNotification(player, store);
             return;
           }
@@ -2611,6 +2629,30 @@
           }
         },
 
+        // fallback: 当 mediaSession 不可用时使用简单通知（如果浏览器支持 Notification）
+        fallbackNotification(player, store) {
+          if (!('Notification' in window)) return;
+          if (Notification.permission === 'default') {
+            Notification.requestPermission();
+            return;
+          }
+          if (Notification.permission !== 'granted') return;
+          const track = store.state.currentTrack;
+          if (!track) return;
+          const options = {
+            body: player.state.isPlaying ? `正在播放: ${track.singer || '未知歌手'}` : '已暂停',
+            icon: 'https://img.icons8.com/color/96/music-record.png',
+            tag: 'music-player-fallback',
+            silent: true
+          };
+          try {
+            const n = new Notification(track.name || '音乐播放器', options);
+            n.onclick = () => { window.focus(); n.close(); };
+          } catch (e) {
+            console.log('Fallback 通知失败', e);
+          }
+        },
+
         updateMetadata(track) {
           if (!track || !('mediaSession' in navigator)) return;
 
@@ -2632,21 +2674,32 @@
             }
           ];
 
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: track.name || '未知曲目',
-            artist: track.singer || '未知艺术家',
-            album: track.album || 'FLAC播放器',
-            artwork: artwork
-          });
+          try {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: track.name || '未知曲目',
+              artist: track.singer || '未知艺术家',
+              album: track.album || 'FLAC播放器',
+              artwork: artwork
+            });
+          } catch (e) {
+            // 在某些浏览器中 MediaMetadata 构造可能失败
+            console.warn('设置 media metadata 失败', e);
+          }
         },
 
         showCustomNotification(track, isPlaying) {
-          if (!track || !('Notification' in window) || Notification.permission !== 'granted') {
-            if (Notification.permission === 'default') {
+          if (!track || !('Notification' in window)) {
+            if (Notification && Notification.permission === 'default') {
               Notification.requestPermission();
             }
             return;
           }
+
+          if (Notification.permission === 'default') {
+            Notification.requestPermission();
+            return;
+          }
+          if (Notification.permission !== 'granted') return;
 
           this.removeNotification();
 
@@ -2686,19 +2739,30 @@
             }
           };
 
-          const notification = new Notification(track.name, options);
+          try {
+            const notification = new Notification(track.name, options);
+            this._notification = notification;
 
-          notification.onclick = () => {
-            window.focus();
-            this.removeNotification();
-          };
+            notification.onclick = () => {
+              window.focus();
+              this.removeNotification();
+            };
 
-          notification.onclose = () => {
-            console.log('通知已关闭');
-          };
+            notification.onclose = () => {
+              // console.log('通知已关闭');
+            };
+          } catch (e) {
+            console.warn('Notification 创建失败', e);
+          }
         },
 
         removeNotification() {
+          try {
+            if (this._notification && typeof this._notification.close === 'function') {
+              this._notification.close();
+            }
+            this._notification = null;
+          } catch (e) {}
         },
 
         initNotificationPermission() {
@@ -2727,7 +2791,8 @@
           this.loadInitialData();
           this.xiaomiAdapter();
 
-          MediaSessionPatch.init(this.player, this.store, this.ui);
+          // 修复：调用正确的 EnhancedMediaSession
+          EnhancedMediaSession.init(this.player, this.store, this.ui);
         }
 
         xiaomiAdapter() {
