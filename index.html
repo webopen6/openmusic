@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🎵 FLAC无损</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>🎵 FLAC无损 · 精简控制</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FLAC播放器">
@@ -13,6 +13,7 @@
   <link rel="preconnect" href="https://img.icons8.com">
 
   <style>
+    /* ========== 全局主题变量（默认） ========== */
     :root {
       --primary: #0078ff;
       --primary-dark: #0056cc;
@@ -33,13 +34,45 @@
       --player-height: 130px;
     }
 
+    /* ========== 系统暗色优先（次级） ========== */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #121212;
+        --text: #f5f5f7;
+        --text-secondary: #a1a1a6;
+        --white: #1e1e1e;
+        --border: #333333;
+        --primary: #0a84ff;
+        --primary-dark: #0066cc;
+      }
+    }
+
+    /* ========== 显式 data-theme="dark"（最高优先） ========== */
+    [data-theme="dark"] {
+      --bg: #121212;
+      --text: #ffffff;
+      --text-secondary: #b0b0b0;
+      --white: #2a2a2a;
+      --white-rgb: 42, 42, 42;
+      --border: #404040;
+      --primary: #0a84ff;
+      --primary-dark: #0066cc;
+      --success: #30d158;
+      --danger: #ff453a;
+      --shadow: 0 4px 20px rgba(0,0,0,0.6);
+      --shadow-hover: 0 6px 24px rgba(0,0,0,0.8);
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ========== 基础重置 ========== */
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
     }
 
+    /* 统一的 body（合并重复定义） */
     body {
       background: var(--bg);
       color: var(--text);
@@ -50,8 +83,24 @@
       line-height: 1.5;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      transition: background-color 0.3s, color 0.3s;
+      margin: 0;
     }
 
+    /* 为有动画不适应用户提供降低动画的支持 */
+    @media (prefers-reduced-motion: reduce) {
+      :root {
+        --transition: none;
+      }
+      * {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
+
+    /* ========== 布局 ========== */
     .app-grid {
       display: grid;
       grid-template-columns: 240px 1fr 300px;
@@ -63,6 +112,7 @@
       width: 100%;
     }
 
+    /* ========== 卡片 ========== */
     .card {
       background: var(--white);
       border-radius: var(--radius);
@@ -92,6 +142,7 @@
       padding: 20px;
     }
 
+    /* ========== 按钮 ========== */
     .btn {
       display: inline-flex;
       align-items: center;
@@ -135,6 +186,8 @@
     .btn-icon-large {
       width: 56px;
       height: 56px;
+      padding: 0;
+      border-radius: 50%;
     }
 
     .btn.active {
@@ -143,6 +196,7 @@
       border-color: var(--primary);
     }
 
+    /* ========== 快捷操作 ========== */
     .quick-actions {
       display: flex;
       flex-wrap: wrap;
@@ -154,6 +208,7 @@
       flex: 1 0 calc(50% - 4px);
     }
 
+    /* ========== 分类列表 ========== */
     .category-list {
       max-height: 380px;
       overflow-y: auto;
@@ -210,6 +265,7 @@
       color: var(--primary);
     }
 
+    /* ========== 搜索区 ========== */
     .search-area {
       display: grid;
       grid-template-columns: 1fr auto auto;
@@ -240,6 +296,7 @@
       padding: 0;
     }
 
+    /* ========== 音乐列表 ========== */
     .music-list {
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -259,8 +316,6 @@
       cursor: pointer;
       transition: var(--transition);
       position: relative;
-      left: auto;
-      right: auto;
       height: 68px;
       box-sizing: border-box;
       background: var(--white);
@@ -308,6 +363,7 @@
       font-weight: 500;
     }
 
+    /* ========== 收藏图标 ========== */
     .favorite-icon {
       color: #ccc;
       transition: var(--transition);
@@ -319,6 +375,7 @@
       color: var(--danger);
     }
 
+    /* ========== 播放器控件 ========== */
     .player-controls {
       position: fixed;
       bottom: 0;
@@ -384,6 +441,7 @@
       margin-top: 2px;
     }
 
+    /* ========== 进度条 ========== */
     .progress-area {
       margin-bottom: 12px;
     }
@@ -414,6 +472,7 @@
       color: var(--text-secondary);
     }
 
+    /* ========== 控制组 ========== */
     .control-group {
       display: flex;
       justify-content: center;
@@ -422,10 +481,12 @@
       margin: 10px 0;
     }
 
+    /* 如果 mode-group 真的不需要显示，可以保留注释说明 */
     .mode-group {
       display: none !important;
     }
 
+    /* ========== 音量区 ========== */
     .volume-area {
       display: flex;
       align-items: center;
@@ -441,6 +502,7 @@
       border-radius: 2px;
     }
 
+    /* WebKit thumb（原有）*/
     .volume-slider::-webkit-slider-thumb {
       -webkit-appearance: none;
       width: 14px;
@@ -457,6 +519,19 @@
       transform: scale(1.2);
     }
 
+    /* Firefox thumb 补充（兼容性） */
+    .volume-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--white);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+
+    /* ========== 排行榜 ========== */
     .rank-list {
       max-height: 450px;
       overflow-y: auto;
@@ -532,6 +607,7 @@
       text-overflow: ellipsis;
     }
 
+    /* ========== 移动抽屉与头部 ========== */
     .mobile-drawer {
       position: fixed;
       top: 0;
@@ -586,6 +662,7 @@
       box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     }
 
+    /* ========== 提示信息样式 ========== */
     .status-message {
       padding: 10px 16px;
       border-radius: var(--radius-sm);
@@ -618,6 +695,7 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
+    /* ========== 加载状�� ========== */
     .loading-spinner {
       display: inline-block;
       width: 20px;
@@ -638,6 +716,7 @@
       color: var(--text-secondary);
     }
 
+    /* ========== 响应式布局 ========== */
     @media (min-width: 1025px) {
       .music-list {
         max-height: calc(10 * 68px + 16px);
@@ -738,6 +817,7 @@
       }
     }
 
+    /* ========== 滚动条样式 ========== */
     ::-webkit-scrollbar {
       width: 4px;
       height: 4px;
@@ -757,6 +837,7 @@
       background: #a8a8a8;
     }
 
+    /* ========== 通用工具类 ========== */
     .hidden {
       display: none !important;
     }
@@ -767,6 +848,7 @@
       text-overflow: ellipsis;
     }
 
+    /* 体积值显示 */
     #volumeValue {
       color: var(--text-secondary);
       font-size: 12px;
@@ -779,6 +861,7 @@
       color: var(--primary);
     }
 
+    /* 音量图标状态颜色 */
     .volume-area i.fa-volume-off {
       color: #ff4757 !important;
     }
@@ -791,6 +874,7 @@
       color: var(--primary) !important;
     }
 
+    /* ========== MTV 歌词高亮 ========== */
     .mtv-lyrics-container {
       width: 100%;
       margin: 10px 0;
@@ -825,12 +909,7 @@
       width: 0%;
       overflow: hidden;
       will-change: width;
-      background: linear-gradient(
-        90deg,
-        var(--primary) 0%,
-        #4d9eff 60%,
-        #80b5ff 100%
-      );
+      background: linear-gradient(90deg, var(--primary) 0%, #4d9eff 60%, #80b5ff 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -887,56 +966,7 @@
       }
     }
 
-    @media (max-width: 768px) {
-      .mtv-current-line {
-        font-size: 16px;
-        padding: 0 10px;
-        margin-bottom: 2px;
-        min-height: 28px;
-        transform: scale(1.04);
-      }
-      .mtv-next-line {
-        font-size: 13px;
-      }
-
-      .lyric-text {
-        font-size: 18px;
-      }
-    }
-
-    [data-theme="dark"] {
-      --bg: #121212;
-      --text: #ffffff;
-      --text-secondary: #b0b0b0;
-      --white: #2a2a2a;
-      --white-rgb: 42, 42, 42;
-      --border: #404040;
-      --primary: #0a84ff;
-      --primary-dark: #0066cc;
-      --success: #30d158;
-      --danger: #ff453a;
-      --shadow: 0 4px 20px rgba(0,0,0,0.6);
-      --shadow-hover: 0 6px 24px rgba(0,0,0,0.8);
-      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) {
-        --bg: #121212;
-        --text: #f5f5f7;
-        --text-secondary: #a1a1a6;
-        --white: #1e1e1e;
-        --border: #333333;
-      }
-    }
-
-    body {
-      background-color: var(--bg);
-      color: var(--text);
-      transition: background-color 0.3s, color 0.3s;
-      margin: 0;
-    }
-
+    /* ========== data-theme dark 下的少量覆盖（保持兼容） ========== */
     [data-theme="dark"] .music-item {
       background: var(--white);
       border-bottom-color: #3a3a3a;
@@ -998,90 +1028,6 @@
 
     [data-theme="dark"] .mtv-current-line {
       color: var(--primary);
-    }
-
-    [data-theme="dark"] .mtv-next-line {
-      color: var(--text-secondary);
-    }
-
-    [data-theme="dark"] .mtv-current-line .lyric-text.base {
-      color: #aaa;
-      opacity: 0.3;
-    }
-
-    [data-theme="dark"] .mtv-current-line .lyric-text.fill {
-      color: var(--primary);
-      text-shadow: 0 0 12px rgba(10, 132, 255, 0.5);
-    }
-
-    [data-theme="dark"] .player-controls {
-      background: var(--white);
-      border-top-color: var(--border);
-    }
-
-    [data-theme="dark"] .progress-bar {
-      background: #404040;
-    }
-
-    [data-theme="dark"] .progress-fill {
-      background: var(--primary);
-    }
-
-    [data-theme="dark"] .volume-slider {
-      background: #404040;
-    }
-
-    [data-theme="dark"] .volume-slider::-webkit-slider-thumb {
-      background: var(--primary);
-      border-color: var(--white);
-    }
-
-    [data-theme="dark"] #volumeValue {
-      color: var(--text-secondary);
-    }
-
-    [data-theme="dark"] .track-name {
-      color: var(--text);
-    }
-
-    [data-theme="dark"] .track-singer {
-      color: var(--text-secondary);
-    }
-
-    [data-theme="dark"] .time-display span {
-      color: var(--text-secondary);
-    }
-
-    .theme-btn.inline {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: 1px solid var(--border);
-      background: var(--white);
-      color: var(--text);
-      font-size: 20px;
-      cursor: pointer;
-      transition: var(--transition);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .theme-btn.inline:hover {
-      background: var(--bg);
-      transform: scale(1.05);
-    }
-    /* 隐藏旧的悬浮主题按钮，现在用内嵌的 */
-    #inlineThemeToggle.float {
-      display: none !important;
-    }
-
-    .error-boundary {
-      padding: 20px;
-      text-align: center;
-      color: var(--danger);
-      background: rgba(255, 71, 87, 0.1);
-      border-radius: var(--radius);
-      margin: 20px;
     }
   </style>
 
@@ -1204,6 +1150,7 @@
         </div>
       </div>
 
+      <!-- 正确的按钮排列：模式切换、上一曲、播放、下一曲、主题切换 (内嵌) -->
       <div class="control-group" style="gap: 12px;">
         <button class="btn btn-icon" id="modeBtn" title="播放模式">
           <i class="fas fa-list" id="modeIcon"></i>
@@ -1430,7 +1377,7 @@
 
         async loadMusicData() {
           try {
-            const response = await fetch('./music.json?' + Date.now());
+            const response = await fetch('./music.json?' + Date.now()); // 添加时间戳避免缓存
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 
@@ -2223,6 +2170,7 @@
           const refreshBtn = this.elements.get('#refreshBtn');
           if (refreshBtn) refreshBtn.addEventListener('click', () => this.emit('refresh'));
 
+          // 隐藏的mode-group不再监听，因为已经隐藏。但是模式切换通过#modeBtn处理。
           this.modeBtns.forEach(btn => {
             btn.addEventListener('click', () => {
               const mode = btn.dataset.mode;
@@ -2253,6 +2201,7 @@
             });
           }
 
+          // 内嵌主题切换按钮
           const inlineTheme = this.elements.get('#themeToggleInline');
           if (inlineTheme) {
             inlineTheme.addEventListener('click', () => {
@@ -3017,6 +2966,7 @@
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', doInit);
         } else {
+          // DOM 已经就绪，直接执行
           doInit();
         }
       })();
