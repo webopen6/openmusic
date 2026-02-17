@@ -3086,6 +3086,53 @@
       window.musicManager = app.store;
       window.uiManager = app.ui;
     })();
-  </script>
+
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      console.log('ServiceWorker 注册成功：', reg);
+
+      // 如果通知权限未定，主动请求（不打断用户）
+      if (window.Notification && Notification.permission === 'default') {
+        Notification.requestPermission().then(p => console.log('Notification.permission ->', p));
+      }
+
+      // 暴露一个简单的辅助函数，页面中播放时可调用以显示“正在播放”通知
+      window.showNowPlayingNotification = function (title, body) {
+        if (reg && reg.showNotification && Notification.permission === 'granted') {
+          reg.showNotification(title || '正在播放', {
+            body: body || '',
+            tag: 'now-playing',
+            renotify: true,
+            // requireInteraction 许多厂商会忽略，这里不强制
+            actions: [
+              { action: 'prev', title: '上一曲' },
+              { action: 'pause', title: '暂停' },
+              { action: 'next', title: '下一曲' }
+            ]
+          }).catch(e => console.warn('showNotification 失败', e));
+        } else if (Notification && Notification.permission === 'granted') {
+          // 回退到页面级 Notification
+          try { new Notification(title || '正在播放', { body: body || '', tag: 'now-playing' }); } catch (e) {}
+        }
+      };
+    }).catch(err => console.warn('ServiceWorker 注册失败：', err));
+
+    // 接收来自 Service Worker 的消息（notification action）
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const msg = e.data || {};
+      if (msg.type === 'notification-action') {
+        const action = msg.action;
+        console.log('收到 SW 消息：', action);
+        // 简单桥接到现有播放器 / UI（如果存在）
+        if (action === 'pause' && window.musicPlayer) { window.musicPlayer.pause && window.musicPlayer.pause(); }
+        if (action === 'play' && window.musicPlayer) { window.musicPlayer.play && window.musicPlayer.play(); }
+        if (action === 'next' && window.uiManager) { window.uiManager.emit && window.uiManager.emit('player:next'); }
+        if (action === 'prev' && window.uiManager) { window.uiManager.emit && window.uiManager.emit('player:prev'); }
+      }
+    });
+  })();
+</script>
 </body>
 </html>
