@@ -2487,7 +2487,6 @@
             console.log('当前浏览器不支持MediaSession');
             return;
           }
-
           this.setupEventListeners(player, store);
           this.setupActionHandlers(player, ui);
           this.setupPositionState(player);
@@ -2502,15 +2501,12 @@
               navigator.mediaSession.playbackState = 'playing';
             }
           });
-
           player.on('pause', () => {
             navigator.mediaSession.playbackState = 'paused';
           });
-
           player.on('ended', () => {
             navigator.mediaSession.playbackState = 'none';
           });
-
           store.subscribe((state) => {
             if (state.currentTrack && state.isPlaying) {
               this.updateMetadata(state.currentTrack);
@@ -2520,7 +2516,6 @@
 
         setupActionHandlers(player, ui) {
           if (!navigator.mediaSession.setActionHandler) return;
-
           const actions = {
             play: () => player.play(),
             pause: () => player.pause(),
@@ -2528,7 +2523,6 @@
             nexttrack: () => ui.emit('player:next'),
             stop: () => { player.pause(); player.audio.currentTime = 0; }
           };
-
           Object.entries(actions).forEach(([action, handler]) => {
             try {
               navigator.mediaSession.setActionHandler(action, handler);
@@ -2536,16 +2530,13 @@
               console.log(`设置${action}处理器失败:`, e);
             }
           });
-
           try {
             navigator.mediaSession.setActionHandler('seekbackward', (details) => {
               player.audio.currentTime = Math.max(0, player.audio.currentTime - (details.seekOffset || 10));
             });
-
             navigator.mediaSession.setActionHandler('seekforward', (details) => {
               player.audio.currentTime = Math.min(player.audio.duration, player.audio.currentTime + (details.seekOffset || 10));
             });
-
             navigator.mediaSession.setActionHandler('seekto', (details) => {
               if (details.fastSeek && 'fastSeek' in player.audio) {
                 player.audio.fastSeek(details.seekTime);
@@ -2558,7 +2549,6 @@
 
         setupPositionState(player) {
           if (!('setPositionState' in navigator.mediaSession)) return;
-
           const updatePosition = () => {
             if (player.audio.duration && isFinite(player.audio.duration)) {
               try {
@@ -2570,14 +2560,12 @@
               } catch (e) {}
             }
           };
-
           player.on('timeupdate', updatePosition);
           player.on('loadedmetadata', updatePosition);
         },
 
         updateMetadata(track) {
           if (!track || !('mediaSession' in navigator)) return;
-
           navigator.mediaSession.metadata = new MediaMetadata({
             title: track.name || '未知曲目',
             artist: track.singer || '未知艺术家',
@@ -2593,10 +2581,8 @@
         handleXiaomiCompatibility(player, store) {
           const isXiaomi = /xiaomi|mi\s|redmi|poco/i.test(navigator.userAgent);
           if (!isXiaomi) return;
-
           console.log('小米设备检测，启用兼容模式');
           let refreshInterval;
-
           player.on('play', () => {
             if (refreshInterval) clearInterval(refreshInterval);
             refreshInterval = setInterval(() => {
@@ -2607,6 +2593,7 @@
           });
           player.on('pause', () => { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }});
           player.on('ended', () => { if (refreshInterval) { clearInterval(refreshInterval); refreshInterval = null; }});
+        },
 
         requestNotificationPermission() {
           if ('Notification' in window && Notification.permission === 'default') {
@@ -2796,6 +2783,7 @@
               }
             }
           });
+        }
 
         initialRender() {
           this.ui.renderCategories();
@@ -2980,8 +2968,7 @@
           window.uiManager.virtualList.destroy();
         }
       });
-
-    })();
+      
   </script>
 </body>
 </html>
