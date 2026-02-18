@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>🎵 FLAC无损</title>
+  <title>🎵 FLAC无损 · 小米适配版</title>
 
   <style>
     :root {
@@ -691,9 +691,9 @@
 
       .music-list,
       #musicListContainer {
-        max-height: calc(6 * 68px + 8px) !important;
-        min-height: calc(6 * 68px + 8px) !important;
-        height: calc(6 * 68px + 8px) !important;
+        max-height: calc(7 * 68px + 8px) !important;
+        min-height: calc(7 * 68px + 8px) !important;
+        height: calc(7 * 68px + 8px) !important;
         overflow-y: auto !important;
       }
     }
@@ -2605,6 +2605,7 @@
             if (track) {
               this.updateMetadata(track);
               navigator.mediaSession.playbackState = "playing";
+              this.showCustomNotification(track, true);
               if (window.showNowPlayingNotification) {
                 window.showNowPlayingNotification(track.name, `正在播放: ${track.singer || '未知歌手'}`);
               }
@@ -2629,7 +2630,15 @@
             ['pause', () => player.pause()],
             ['previoustrack', () => ui.emit('player:prev')],
             ['nexttrack', () => ui.emit('player:next')],
-            ['stop', () => { player.pause(); this.removeNotification(); }]
+            ['stop', () => { player.pause(); this.removeNotification(); }],
+            ['seekbackward', (details) => {
+                const skipTime = details.seekOffset || 10;
+                player.audio.currentTime = Math.max(0, player.audio.currentTime - skipTime);
+            }],
+            ['seekforward', (details) => {
+                const skipTime = details.seekOffset || 10;
+                player.audio.currentTime = Math.min(player.audio.duration, player.audio.currentTime + skipTime);
+            }]
           ];
 
           actions.forEach(([action, handler]) => {
@@ -2797,15 +2806,59 @@
         }
       };
 
-      // ==================== 应用主类 ====================
+      // ==================== 应用主类 (整合 Wake Lock) ====================
       class App {
         constructor() {
           this.store = new Store();
           this.player = new AudioPlayer();
           this.ui = new UIManager(this.store, this.player);
           this.lyrics = new LyricsManager(this.player, this.store);
+          this.wakeLock = null;
+          this.setupWakeLock();
+          this.positionTimer = null;
+
           this.init();
         }
+
+        // ---- 新增：唤醒锁设置 ----
+        setupWakeLock() {
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && this.player.state.isPlaying) {
+              this.requestWakeLock();
+            }
+          });
+        }
+
+        async requestWakeLock(retryCount = 3) {
+          if (!('wakeLock' in navigator)) return;
+          try {
+            if (this.wakeLock) return;
+            this.wakeLock = await navigator.wakeLock.request('screen');
+            this.wakeLock.addEventListener('release', () => {
+              console.log('Wake Lock 释放');
+              this.wakeLock = null;
+            });
+          } catch (err) {
+            console.warn('唤醒锁请求失败，剩余重试次数：', retryCount - 1);
+            if (retryCount > 0) {
+              setTimeout(() => this.requestWakeLock(retryCount - 1), 1000);
+            } else {
+              this.wakeLock = null;
+            }
+          }
+        }
+
+        releaseWakeLock() {
+          if (this.wakeLock) {
+            this.wakeLock.release()
+              .then(() => {
+                console.log('唤醒锁已手动释放');
+                this.wakeLock = null;
+              })
+              .catch(err => console.error('释放唤醒锁失败', err));
+          }
+        }
+        // ---- 唤醒锁结束 ----
 
         init() {
           this.setupEventListeners();
@@ -2822,7 +2875,7 @@
 
           if (isXiaomi) {
             console.log('检测到小米设备，应用特殊适配');
-
+            this.ui.showStatus('小米手机请确保已开启“通知使用权”和“锁屏显示”权限，以保证后台播放', 'info', 8000);
             this.keepAliveInterval = setInterval(() => {
               if (this.player.state.isPlaying) {
                 if ('mediaSession' in navigator) {
@@ -2837,6 +2890,7 @@
           if (this.keepAliveInterval) {
             clearInterval(this.keepAliveInterval);
           }
+          this.releaseWakeLock(); // 清理唤醒锁
         }
 
         async loadInitialData() {
@@ -2909,6 +2963,22 @@
           this.player.on('play', () => {
             this.store.setState({ isPlaying: true });
             this.ui.updatePlayButton(true);
+            this.requestWakeLock();
+            if (this.positionTimer) clearInterval(this.positionTimer);
+            this.positionTimer = setInterval(() => {
+              if (this.player.state.isPlaying && 'mediaSession' in navigator) {
+                try {
+                  navigator.mediaSession.setPositionState({
+                    duration: this.player.audio.duration || 0,
+                    playbackRate: 1,
+                    position: this.player.audio.currentTime || 0
+                  });
+                } catch (e) {}
+              } else {
+                clearInterval(this.positionTimer);
+                this.positionTimer = null;
+              }
+            }, 5000);
 
             const currentMusic = this.store.state.currentTrack;
             if (currentMusic && this.lyrics.lines.length > 0) {
@@ -2927,6 +2997,12 @@
             this.store.setState({ isPlaying: false });
             this.ui.updatePlayButton(false);
 
+            this.releaseWakeLock();
+            if (this.positionTimer) {
+              clearInterval(this.positionTimer);
+              this.positionTimer = null;
+            }
+
             if (this.lyrics) {
               this.lyrics.stop();
             }
@@ -2940,6 +3016,14 @@
           });
 
           this.player.on('ended', () => {
+            // 歌曲结束时也释放唤醒锁（下一首会在play时再次请求）
+            this.releaseWakeLock();
+
+            if (this.positionTimer) {
+              clearInterval(this.positionTimer);
+              this.positionTimer = null;
+            }
+
             this.store.setState({ isEndingHandled: false });
 
             setTimeout(() => {
@@ -2953,6 +3037,11 @@
           this.player.on('error', (err) => {
             console.error('播放错误:', err);
             this.ui.showStatus('播放失败，请检查音频文件', 'error');
+            this.releaseWakeLock(); // 出错时释放锁
+            if (this.positionTimer) {
+              clearInterval(this.positionTimer);
+              this.positionTimer = null;
+            }
           });
 
           this.store.subscribe((state) => {
@@ -3001,9 +3090,13 @@
 
             const lyricsPromise = this.lyrics.load(music);
             const success = await this.player.play(music.url);
+            if ('Notification' in window && Notification.permission === 'default') {
+              Notification.requestPermission();
+            }
 
             if (success) {
               this.store.addRecent(music.filename);
+              // 播放成功时，唤醒锁会在 play 事件中请求，这里不需要重复
               const hasLyrics = await lyricsPromise;
               setTimeout(() => {
                 if (this.player.state.isPlaying && this.store.state.currentIndex === index) {
@@ -3066,7 +3159,6 @@
           const txt = { single: '单曲循环', sequence: '顺序播放', random: '随机播放', loop: '列表循环' };
           return txt[mode] || '顺序播放';
         }
-
 
         setupKeyboardShortcuts() {
           document.addEventListener('keydown', (e) => {
@@ -3137,7 +3229,7 @@
     }
   });
 
-    // 监听 Service Worker 发来的消息
+    // 监听 Service Worker 发来的消息 (已确保调用 window.musicPlayer 的正确方法)
     navigator.serviceWorker.addEventListener('message', (e) => {
       const msg = e.data || {};
 
